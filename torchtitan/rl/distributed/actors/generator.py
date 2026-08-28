@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import torchstore as ts
 from monarch.actor import Actor, Channel, concurrent_endpoint, context, current_rank
 
 from torchtitan.models.common.decoder import Decoder
@@ -35,6 +36,10 @@ class _GeneratorActorEndpoints:
             generator_name=context().actor_instance.actor_id.actor_name,
             open_result_channel=Channel.open,
         )
+
+    @concurrent_endpoint
+    async def initialize_weight_sync_client(self, group: int) -> None:
+        await ts.client(role="requester", group=group)
 
     @concurrent_endpoint
     async def sync_log_step(self, step: int, relative_step: int | None = None) -> None:

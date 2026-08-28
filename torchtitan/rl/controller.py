@@ -105,7 +105,6 @@ from monarch.actor import ProcMesh, this_host
 from monarch.spmd import setup_torch_elastic_env_async
 
 from torchtitan.components.renderer import RendererConfig
-
 from torchtitan.components.tokenizer import HuggingFaceTokenizer
 from torchtitan.config import Configurable
 from torchtitan.models.common.decoder import Decoder
@@ -119,7 +118,7 @@ from torchtitan.rl.components.work_buffer import (
 from torchtitan.rl.distributed.actors.generator import VLLMGeneratorActor
 from torchtitan.rl.distributed.actors.trainer import TrainerActor
 from torchtitan.rl.distributed.routing.inter_generator import InterGeneratorRouter
-from torchtitan.rl.distributed.weight_sync import WeightSyncManager
+from torchtitan.rl.distributed.weight_sync import WeightSyncConfig, WeightSyncManager
 from torchtitan.rl.generator import SamplingConfig, VLLMGenerator
 from torchtitan.rl.observability import metrics as m
 from torchtitan.rl.observability.controller import (
@@ -264,6 +263,9 @@ class Controller(Configurable):
 
         async_loop: AsyncLoopConfig = field(default_factory=AsyncLoopConfig)
         """How the data->rollout->batch->train loop is sized and coordinated."""
+
+        weight_sync: WeightSyncConfig = field(default_factory=WeightSyncConfig)
+        """TorchStore weight-sync mode selection."""
 
         rollouter: Rollouter.Config
         """The rollouter: its datasets, envs, and rubric."""
@@ -626,7 +628,26 @@ class Controller(Configurable):
         #   LOCAL_RANK, so colocated processes share the same volume.
         # https://github.com/meta-pytorch/torchstore
         with sl.log_trace_span("torchstore_init"):
-            await ts.initialize(mesh=trainer_mesh, strategy=ts.LocalRankStrategy())
+            routing = config.weight_sync.mode == "routing"
+            await ts.initialize(
+                mesh=trainer_mesh,
+                strategy=(
+                    ts.TorchStoreStrategy() if routing else ts.LocalRankStrategy()
+                ),
+                client_type=(
+                    ts.ClientType.ROUTING if routing else ts.ClientType.STANDARD
+                ),
+            )
+            if routing:
+                # TorchStore clients are cached per process. Initialize every
+                # actor rank before the role-less state-dict APIs use that cache.
+                await asyncio.gather(
+                    self.trainer.initialize_weight_sync_client.call(),
+                    *(
+                        generator.initialize_weight_sync_client.call(group=group)
+                        for group, generator in enumerate(generators)
+                    ),
+                )
 
         # Resume: __init__ ran CheckpointManager.load(); read back the restored policy_version
         # (0 if fresh) so the loop resumes at the right step and generators pull at that version.
@@ -1055,12 +1076,14 @@ class Controller(Configurable):
                 await self._rollouter.sync_log_step(step)
             step_timer = MetricsTimer()
 
-            with sl.log_trace_span("train_step"), step_timer.record(
-                "timing/step/total"
+            with (
+                sl.log_trace_span("train_step"),
+                step_timer.record("timing/step/total"),
             ):
                 # Waits for a TrainerStepBatch to be ready (or None on shutdown).
-                with sl.log_trace_span("wait_for_training_batch"), step_timer.record(
-                    "timing/step/wait_for_training_batch"
+                with (
+                    sl.log_trace_span("wait_for_training_batch"),
+                    step_timer.record("timing/step/wait_for_training_batch"),
                 ):
                     packed = await training_batch_queue.get()
 
@@ -1082,8 +1105,9 @@ class Controller(Configurable):
                 # TODO(async): can't stream microbatches (interleave pack->train) — the loss is normalized by
                 #   packed.num_global_valid_tokens (sum over ALL microbatches), needed before any fwd/bwd. To
                 #   support streaming, accumulate raw loss/token counts across microbatches and scale before optimizer.
-                with sl.log_trace_span("forward_backward_steps"), step_timer.record(
-                    "timing/step/forward_backward"
+                with (
+                    sl.log_trace_span("forward_backward_steps"),
+                    step_timer.record("timing/step/forward_backward"),
                 ):
                     fwd_bwd_metrics = self._get_rank_0_value(
                         await self.trainer.forward_backward_steps.call(
@@ -1097,15 +1121,17 @@ class Controller(Configurable):
                         break
 
                 # Await trainer weight push before the optimizer mutates the weights.
-                with sl.log_trace_span(
-                    "blocking_trainer_push_model_state_dict"
-                ), step_timer.record(
-                    "timing/step/blocking_trainer_push_model_state_dict"
+                with (
+                    sl.log_trace_span("blocking_trainer_push_model_state_dict"),
+                    step_timer.record(
+                        "timing/step/blocking_trainer_push_model_state_dict"
+                    ),
                 ):
                     push_metrics = await self._weight_sync.wait_prev_push()
 
-                with sl.log_trace_span("optimizer_step"), step_timer.record(
-                    "timing/step/optimizer"
+                with (
+                    sl.log_trace_span("optimizer_step"),
+                    step_timer.record("timing/step/optimizer"),
                 ):
                     optimizer_result = self._get_rank_0_value(
                         await self.trainer.optimizer_step.call(
@@ -1115,10 +1141,11 @@ class Controller(Configurable):
                 self._trainer_policy_version = optimizer_result.policy_version
 
                 # Await generator weight pull to finish before the trainer's next push.
-                with sl.log_trace_span(
-                    "blocking_generator_pull_model_state_dict"
-                ), step_timer.record(
-                    "timing/step/blocking_generator_pull_model_state_dict"
+                with (
+                    sl.log_trace_span("blocking_generator_pull_model_state_dict"),
+                    step_timer.record(
+                        "timing/step/blocking_generator_pull_model_state_dict"
+                    ),
                 ):
                     pull_metrics = await self._weight_sync.wait_prev_pull()
 

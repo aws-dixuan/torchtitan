@@ -8,6 +8,7 @@
 
 from __future__ import annotations
 
+import torchstore as ts
 from monarch.actor import Actor, concurrent_endpoint
 
 from torchtitan.rl.trainer import Trainer
@@ -15,6 +16,10 @@ from torchtitan.rl.types import OptimizerStepOutput, TrainingMicrobatch
 
 
 class _TrainerActorEndpoints:
+    @concurrent_endpoint
+    async def initialize_weight_sync_client(self) -> None:
+        await ts.client(role="publisher")
+
     @concurrent_endpoint
     async def get_policy_version(self) -> int:
         return await super().get_policy_version()
