@@ -96,7 +96,10 @@ class TorchTitanGPUModelRunner(GPUModelRunner):
         ``num_tokens`` is the unpadded count; every padding source that follows
         (tensor-parallel rounding, CUDA-graph capture size, data-parallel
         equalization) only adds rows. The model turns the count into a padding
-        mask, which keeps those rows off Dist-MoE's network.
+        mask, which keeps those rows off Dist-MoE's network. vLLM's dummy runs
+        (profiling, warm-up, CUDA-graph capture, an idle DP rank's dummy batch)
+        come through here too with their own token count, so their rows count as
+        real; graph replay reads the value published for the real step.
         """
         set_num_valid_tokens = getattr(self.get_model(), "set_num_valid_tokens", None)
         if set_num_valid_tokens is not None:

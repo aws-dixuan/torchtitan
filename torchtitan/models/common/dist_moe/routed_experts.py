@@ -22,7 +22,7 @@ import torch_remat as remat
 from torchtitan.models.common.linear import GroupedLinear
 from torchtitan.protocols.module import Module
 
-from .padding import pad_to_num_tokens, route_padding_to_local_experts
+from .padding import keep_pad_tokens_to_local_experts, pad_to_num_local_input_tokens
 from .runtime import DistMoeRuntime
 
 
@@ -178,7 +178,7 @@ class DistMoeRoutedExperts(Module):
             if padding_mask_T is not None:
                 # Rows vLLM already padded went through the real router. Give
                 # them zero score and this rank's own experts so they stay local.
-                topk_scores_TK, topk_expert_ids_TK = route_padding_to_local_experts(
+                topk_scores_TK, topk_expert_ids_TK = keep_pad_tokens_to_local_experts(
                     topk_scores_TK,
                     topk_expert_ids_TK,
                     padding_mask_T,
@@ -186,7 +186,7 @@ class DistMoeRoutedExperts(Module):
                     num_local_experts=num_local_experts,
                 )
             # Pad up to the planned row count (zero score, this rank's experts).
-            x_TD, topk_scores_TK, topk_expert_ids_TK = pad_to_num_tokens(
+            x_TD, topk_scores_TK, topk_expert_ids_TK = pad_to_num_local_input_tokens(
                 x_TD,
                 topk_scores_TK,
                 topk_expert_ids_TK,
@@ -213,7 +213,7 @@ class DistMoeRoutedExperts(Module):
             options=execution_options,
         )
         remat.recompute_needs_tensor(out_TD)
-        # Unpad: drop the rows equalize added, so the caller gets back as many rows
+        # Unpad: drop the rows pad_to_num_local_input_tokens added, so the caller gets back as many rows
         # as it passed in. A view with a static shape, so it is CUDA-graph safe.
         # Rows vLLM padded stay (their output is zero) and vLLM drops them itself.
         return out_TD if out_TD.shape[0] == num_tokens else out_TD[:num_tokens]
