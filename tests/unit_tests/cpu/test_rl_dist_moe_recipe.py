@@ -39,13 +39,18 @@ def test_rl_integration_recipe_runs_dist_moe_on_both_roles():
     assert config.trainer.parallelism.expert_parallel_degree == 4
 
 
-def test_rl_dist_moe_suite_lists_the_recipe():
+def test_b200_rl_suite_runs_kda_and_dist_moe():
     from tests.integration_tests import get_importable_config_module
-    from tests.rl.integration_tests.rl import build_rl_dist_moe_test_list
+    from tests.rl.integration_tests.rl import (
+        build_b200_rl_test_list,
+        build_rl_kda_test_list,
+    )
 
-    (definition,) = build_rl_dist_moe_test_list()
+    definitions = {d.test_name: d for d in build_b200_rl_test_list()}
 
-    assert definition.test_name == "rl_grpo_moe_debug_dist_moe_tp2_ep4"
-    assert definition.ngpu == 8
-    (config_fn,) = definition.configs
+    for kda in build_rl_kda_test_list():
+        assert kda.test_name in definitions
+    dist_moe_test = definitions["rl_grpo_moe_debug_dist_moe_tp2_ep4"]
+    assert dist_moe_test.ngpu == 8
+    (config_fn,) = dist_moe_test.configs
     assert get_importable_config_module(config_fn) == "torchtitan_recipes.tests.rl"

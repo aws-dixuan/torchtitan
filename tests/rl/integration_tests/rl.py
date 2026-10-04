@@ -118,9 +118,9 @@ def build_rl_kda_test_list() -> list[IntegrationTestDefinition]:
     ]
 
 
-def build_rl_dist_moe_test_list() -> list[IntegrationTestDefinition]:
-    """Build RL integration tests for Dist-MoE, which requires an SM100+ GPU and dist_moe."""
-    return [
+def build_b200_rl_test_list() -> list[IntegrationTestDefinition]:
+    """Build the B200 RL integration tests: KDA, plus Dist-MoE, which requires SM100+."""
+    return build_rl_kda_test_list() + [
         IntegrationTestDefinition(
             configs=[rl_grpo_moe_debug_dist_moe_tp2_ep4],
             test_descr=(
@@ -136,7 +136,7 @@ def build_rl_dist_moe_test_list() -> list[IntegrationTestDefinition]:
 _TEST_SUITES_FUNCTION = {
     "default": build_rl_test_list,
     "kda": build_rl_kda_test_list,
-    "dist_moe": build_rl_dist_moe_test_list,
+    "b200": build_b200_rl_test_list,
 }
 
 
