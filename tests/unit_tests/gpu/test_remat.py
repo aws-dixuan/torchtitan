@@ -20,9 +20,9 @@ from torchtitan.distributed.activation_checkpoint import RegionAC
 from torchtitan.models.common.activation import BinaryActivationFn, Sigmoid, SwiGLU
 from torchtitan.models.common.attention import GQAttention
 from torchtitan.models.common.feed_forward import FeedForward
+from torchtitan.models.common.fp32_output_linear import FP32OutputLinear
 from torchtitan.models.common.linear import (
     ColumnParallelLinear,
-    FP32OutputLinear,
     GroupedLinear,
     Linear,
     RowParallelLinear,
