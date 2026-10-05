@@ -12,7 +12,6 @@ from dataclasses import dataclass, field
 
 import torch
 from torch import nn
-from torch.nn.attention.flex_attention import BlockMask
 
 from torchtitan.config import TrainingConfig
 from torchtitan.config.parallelism import ParallelismConfig
@@ -20,6 +19,7 @@ from torchtitan.distributed.activation_checkpoint import ActivationCheckpointing
 from torchtitan.distributed.parallelism_context import ParallelismContext
 from torchtitan.models.common.attention import (
     BaseAttention,
+    FlexAttentionMetadata,
     QKVLinear,
     VarlenAttentionMetadata,
     VarlenInnerAttention,
@@ -92,7 +92,7 @@ class Attention(BaseAttention):
     def forward(
         self,
         x: torch.Tensor,
-        attention_metadata: BlockMask | VarlenAttentionMetadata,
+        attention_metadata: FlexAttentionMetadata | VarlenAttentionMetadata,
         positions: torch.Tensor | None = None,
     ):
         """
@@ -100,7 +100,7 @@ class Attention(BaseAttention):
 
         Args:
             x: Input tensor with shape ``[T, D]``.
-            attention_metadata: A ``BlockMask`` (flex) or
+            attention_metadata: ``FlexAttentionMetadata`` or
                 ``VarlenAttentionMetadata`` (varlen).
             positions: Optional position indices (unused, for API compatibility).
 
@@ -153,7 +153,7 @@ class GptOssTransformerBlock(TransformerBlock):
     def forward(
         self,
         x: torch.Tensor,
-        attention_metadata: BlockMask | VarlenAttentionMetadata | None,
+        attention_metadata: FlexAttentionMetadata | VarlenAttentionMetadata | None,
         positions: torch.Tensor | None = None,
         *,
         padding_mask: torch.Tensor | None = None,
@@ -163,8 +163,8 @@ class GptOssTransformerBlock(TransformerBlock):
 
         Args:
             x (torch.Tensor): Input tensor of shape (num_tokens, dim).
-            attention_metadata: A ``BlockMask`` selected for this layer's Flex
-                backend, or the shared ``VarlenAttentionMetadata``.
+            attention_metadata: Flex metadata selected for this layer's inner
+                attention, or the shared ``VarlenAttentionMetadata``.
             positions: Optional position indices.
 
         Returns:
@@ -240,7 +240,7 @@ class GptOssModel(Decoder):
     ) -> GptOssModel:
         if parallelism_context.cp_enabled and any(
             isinstance(backend, UlyssesCPInnerAttention.Config)
-            for backend in self.config.full_attention_backends
+            for backend in self.config.base_attention_backends
         ):
             raise NotImplementedError(
                 "GPT-OSS does not support Ulysses CP because its per-head "
