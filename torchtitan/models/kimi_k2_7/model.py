@@ -275,6 +275,7 @@ class KimiK25Model(MultimodalModel, MTPDecoder):
         attention_masks: AttentionMasksType | None = None,
         positions: torch.Tensor | None = None,
         padding_mask: torch.Tensor | None = None,
+        aux_loss_denominators: torch.Tensor | None = None,
     ):
         """Forward pass for Kimi K2.5.
 
@@ -314,8 +315,23 @@ class KimiK25Model(MultimodalModel, MTPDecoder):
             # resumes as global batch sharding after the multimodal region.
             spmd.assert_type(x, {"dp": spmd.S(0), "tp": spmd.R})
 
+        with spmd.no_typecheck():
+            aux_loss_denominator = (
+                None if aux_loss_denominators is None else aux_loss_denominators[0]
+            )
+        aux_loss_kwargs = (
+            {}
+            if aux_loss_denominator is None
+            else {"aux_loss_denominator": aux_loss_denominator}
+        )
         for layer in self.layers.values():
-            x = layer(x, attention_masks, positions, padding_mask=padding_mask)
+            x = layer(
+                x,
+                attention_masks,
+                positions,
+                padding_mask=padding_mask,
+                **aux_loss_kwargs,
+            )
 
         x = self.norm(x) if self.norm is not None else x
         if self._skip_lm_head:
