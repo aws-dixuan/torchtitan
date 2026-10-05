@@ -318,22 +318,33 @@ class DeepSeekV4Model(Decoder):
                 max_num_documents=max_num_documents,
                 max_context_length=max_context_length,
             )
-        (inputs, labels, input_dict,) = MTPDecoder.preprocess_inputs(
-            self,  # pyrefly: ignore[bad-argument-type]
-            input_dict,
-            parallelism_context=parallelism_context,
-            parallelism=parallelism,
-            max_num_documents=max_num_documents,
-            max_context_length=max_context_length,
-            **kwargs,
-        )
+        if self.mtp_layers:
+            inputs, labels, input_dict = MTPDecoder.preprocess_inputs(
+                self,  # pyrefly: ignore[bad-argument-type]
+                input_dict,
+                parallelism_context=parallelism_context,
+                parallelism=parallelism,
+                max_num_documents=max_num_documents,
+                max_context_length=max_context_length,
+                **kwargs,
+            )
+        else:
+            inputs, labels, input_dict = super().preprocess_inputs(
+                input_dict,
+                parallelism_context=parallelism_context,
+                parallelism=parallelism,
+                max_num_documents=max_num_documents,
+                max_context_length=max_context_length,
+                **kwargs,
+            )
         # The offsets sit inside VarlenMetadata, out of reach of the named-input
         # annotation in Decoder.preprocess_inputs.
         attention_masks = input_dict.get("attention_masks")
         if isinstance(attention_masks, VarlenMetadata):
             with parallelism_context.activate_spmd():
                 attention_masks.annotate_spmd_types()
-        if isinstance(inputs, tuple):
+        if self.mtp_layers:
+            assert isinstance(inputs, tuple)
             inputs = inputs[0]
             input_dict.pop("mtp_input_valid_masks")
         return inputs, labels, input_dict
