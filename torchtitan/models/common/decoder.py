@@ -8,6 +8,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, cast
 
+import spmd_types as spmd
 import torch
 from spmd_types import SpmdType
 from torch.nn.attention.flex_attention import _mask_mod_signature, and_masks, BlockMask
@@ -240,6 +241,7 @@ class Decoder(BaseModel):
         attention_masks: AttentionMasksType | None = None,
         *,
         padding_mask: torch.Tensor | None = None,
+        aux_loss_denominators: torch.Tensor | None = None,
     ):
         # positions is listed before attention_masks so AutoParallel's input_fn,
         # which returns (tokens, positions) and binds them positionally, maps
@@ -248,8 +250,23 @@ class Decoder(BaseModel):
         # passthrough for nonexistent layers, allows easy configuration of pipeline parallel stages
         h = self.tok_embeddings(tokens) if self.tok_embeddings is not None else tokens
 
+        with spmd.no_typecheck():
+            aux_loss_denominator = (
+                None if aux_loss_denominators is None else aux_loss_denominators[0]
+            )
+        aux_loss_kwargs = (
+            {}
+            if aux_loss_denominator is None
+            else {"aux_loss_denominator": aux_loss_denominator}
+        )
         for layer in self.layers.values():
-            h = layer(h, attention_masks, positions, padding_mask=padding_mask)
+            h = layer(
+                h,
+                attention_masks,
+                positions,
+                padding_mask=padding_mask,
+                **aux_loss_kwargs,
+            )
 
         h = self.norm(h) if self.norm is not None else h
 

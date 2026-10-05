@@ -269,6 +269,7 @@ class KimiK3TransformerBlock(Module):
         positions: torch.Tensor | None = None,
         *,
         padding_mask: torch.Tensor | None = None,
+        aux_loss_denominator: torch.Tensor | None = None,
     ) -> tuple[torch.Tensor, torch.Tensor]:
         if self.first_layer_in_block:
             block_residual_TND = torch.cat(
@@ -309,7 +310,11 @@ class KimiK3TransformerBlock(Module):
         )
         h_TD = self.ffn_norm(h_TD)
         if self.moe is not None:
-            h_TD = self.moe(h_TD, padding_mask_T=padding_mask)
+            h_TD = self.moe(
+                h_TD,
+                padding_mask_T=padding_mask,
+                aux_loss_denominator=aux_loss_denominator,
+            )
         else:
             assert self.feed_forward is not None
             h_TD = self.feed_forward(h_TD)
@@ -584,6 +589,7 @@ class KimiK3Model(MultimodalModel):
         positions: torch.Tensor | None = None,
         attention_masks: HybridAttentionMetadata | None = None,
         padding_mask: torch.Tensor | None = None,
+        aux_loss_denominators: torch.Tensor | None = None,
     ) -> torch.Tensor | tuple[torch.Tensor, torch.Tensor]:
         if pixel_values_videos is not None or grid_thw_videos is not None:
             raise NotImplementedError("Kimi K3 v1 supports images but not videos.")
@@ -604,6 +610,10 @@ class KimiK3Model(MultimodalModel):
 
         if block_residual_TND is None:
             block_residual_TND = h_TD.unsqueeze(1)[:, :0]
+        with spmd.no_typecheck():
+            aux_loss_denominator = (
+                None if aux_loss_denominators is None else aux_loss_denominators[0]
+            )
         for layer in self.layers.values():
             h_TD, block_residual_TND = layer(
                 h_TD,
@@ -611,6 +621,7 @@ class KimiK3Model(MultimodalModel):
                 attention_masks,
                 positions,
                 padding_mask=padding_mask,
+                aux_loss_denominator=aux_loss_denominator,
             )
 
         if self.output_res_proj is None:
