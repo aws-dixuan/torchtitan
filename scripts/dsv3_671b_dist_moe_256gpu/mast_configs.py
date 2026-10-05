@@ -225,8 +225,8 @@ def graph_trainer_deepseek_v3_16b_dist_moe_mxfp8_cat_verification_4gpu() -> (
         spmd_gradient_accumulation=SPMDGradientAccumulationConfig(
             fsdp_param_unshard_mode="first_microbatch",
             fsdp_grad_reduce_mode="last_microbatch",
-            fuse_wgrad_accumulation="enabled",
         ),
+        fuse_wgrad_accumulation="enabled",
         memory_policy="none",
         inductor_compilation="regional",
         numerics_changing_optim=False,
@@ -274,6 +274,7 @@ def graph_trainer_deepseek_v3_16b_dist_moe_mxfp8_sanket_pp2_verification_4gpu() 
     _configure_round_robin_routing(base)
     config = to_graph_trainer_config(base, GraphTrainerDeepSeekV3Model.Config)
     config.compile = GraphTrainerCompileConfig(
+        fuse_wgrad_accumulation="enabled",
         memory_policy="none",
         inductor_compilation="regional",
         numerics_changing_optim=False,
@@ -387,6 +388,7 @@ def graph_trainer_deepseek_v3_16b_dist_moe_mxfp8_sanket_mtp1_pp2_verification_4g
     base.parallelism.fsdp_defer_gradient_reduction = False
     config = to_graph_trainer_config(base, GraphTrainerDeepSeekV3Model.Config)
     config.compile = GraphTrainerCompileConfig(
+        fuse_wgrad_accumulation="enabled",
         memory_policy="none",
         inductor_compilation="regional",
         numerics_changing_optim=False,
@@ -441,8 +443,8 @@ def graph_trainer_deepseek_v3_671b_dist_moe_mxfp8_chien_chin_256gpu_profile() ->
         spmd_gradient_accumulation=SPMDGradientAccumulationConfig(
             fsdp_param_unshard_mode="first_microbatch",
             fsdp_grad_reduce_mode="last_microbatch",
-            fuse_wgrad_accumulation="enabled",
         ),
+        fuse_wgrad_accumulation="enabled",
         memory_policy="none",
         inductor_compilation="regional",
         numerics_changing_optim=False,
@@ -522,12 +524,12 @@ def deepseek_v3_671b_dist_moe_mxfp8_sanket_topology_256gpu_profile() -> (
     The historical MAST run bound its C4 dataset to ``/mnt/mffuse/c4`` and
     disabled Hugging Face network access. This wrapper restores its explicit
     stage split and cluster-local dataset binding. It permits eight concurrent
-    unsharded stages and retains the historical functional BF16 WGrad and
-    immediate FSDP reduction policies.
+    unsharded stages and retains the historical in-place WGrad accumulation
+    and deferred FSDP reduction policies.
     """
     _prepare_outer_cuda_graph_capture()
     config = _base_chien_eager(seq_len=4096)
-    _configure_dist_moe_runtime(config, inplace_wgrad_accum=False)
+    _configure_dist_moe_runtime(config, inplace_wgrad_accum=True)
     _configure_round_robin_routing(config)
     config.training.num_tokens_per_microbatch_per_dp_rank = 4096
     config.training.num_tokens_per_train_step = 4096 * 4096
@@ -549,7 +551,7 @@ def deepseek_v3_671b_dist_moe_mxfp8_sanket_topology_256gpu_profile() -> (
     config.parallelism.pp_num_unshard_lookahead_factor = "auto"
     config.parallelism.expert_parallel_degree = 64
     config.parallelism.fsdp_reshard_after_forward = "never"
-    config.parallelism.fsdp_defer_gradient_reduction = False
+    config.parallelism.fsdp_defer_gradient_reduction = True
     config.parallelism.fsdp_symm_mem_scope = None
     config.model.local_compile_regions = []
     config.metrics.log_freq = 1
@@ -604,6 +606,7 @@ def graph_trainer_deepseek_v3_671b_dist_moe_mxfp8_sanket_topology_256gpu_profile
     base.parallelism.fsdp_defer_gradient_reduction = False
     config = to_graph_trainer_config(base, GraphTrainerDeepSeekV3Model.Config)
     config.compile = GraphTrainerCompileConfig(
+        fuse_wgrad_accumulation="enabled",
         memory_policy="none",
         inductor_compilation="regional",
         numerics_changing_optim=False,
@@ -630,6 +633,7 @@ def graph_trainer_deepseek_v3_671b_dist_moe_mxfp8_sanket_mtp1_256gpu_profile() -
     base.parallelism.fsdp_defer_gradient_reduction = False
     config = to_graph_trainer_config(base, GraphTrainerDeepSeekV3Model.Config)
     config.compile = GraphTrainerCompileConfig(
+        fuse_wgrad_accumulation="enabled",
         memory_policy="none",
         inductor_compilation="regional",
         numerics_changing_optim=False,
