@@ -487,6 +487,7 @@ class KimiK3Model(MultimodalModel):
 
         inputs = input_dict.pop("input")
         labels = input_dict.pop("labels")
+        input_dict["aux_loss_denominators"] = None
         return inputs, labels, input_dict
 
     def get_attention_masks(

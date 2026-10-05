@@ -28,6 +28,7 @@ from torchtitan.models.common.attention import (
     get_efficient_causal_mask_mod_for_packed_document,
     VarlenInnerAttention,
 )
+from torchtitan.models.common.aux_loss import AuxLoss
 from torchtitan.models.common.decoder_sharding import decoder_input_sharding
 from torchtitan.models.common.embedding import Embedding
 from torchtitan.models.common.feed_forward import FeedForward
@@ -363,6 +364,8 @@ class Decoder(BaseModel):
 
         inputs = input_dict.pop("input")
         labels = input_dict.pop("labels")
+        if next(self.config.traverse(AuxLoss.Config), None) is not None:
+            input_dict["aux_loss_denominators"] = None
         return inputs, labels, input_dict
 
     def _cp_shard(
