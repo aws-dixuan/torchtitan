@@ -19,6 +19,7 @@ from torchtitan.experiments.graph_trainer.graph_pp.utils import (
 )
 
 _GRAD_ACCUMULATOR_INPUT_META = "grad_accumulator_input"
+_GRAD_ACCUMULATOR_OUTPUT_INDEX_META = "grad_accumulator_output_index"
 
 
 def _new_accumulator(value: torch.Tensor, *, device: torch.device) -> torch.Tensor:
@@ -121,6 +122,7 @@ def _insert_accumulator_placeholders(
                 requires_grad=grad_value.requires_grad,
             )
             node.meta[_GRAD_ACCUMULATOR_INPUT_META] = True
+            node.meta[_GRAD_ACCUMULATOR_OUTPUT_INDEX_META] = index
             node_by_accumulator[accumulator_key] = (grad, node)
             accumulator_nodes.append(node)
     return accumulator_nodes
@@ -270,6 +272,17 @@ def insert_graph_gradient_accumulation(
         gm,
     )
     return accumulator_values
+
+
+def graph_gradient_accumulator_input_indices(
+    gm: fx.GraphModule,
+) -> tuple[int, ...]:
+    """Return gradient-output indices in accumulator-placeholder order."""
+    return tuple(
+        node.meta[_GRAD_ACCUMULATOR_OUTPUT_INDEX_META]
+        for node in gm.graph.find_nodes(op="placeholder")
+        if node.meta.get(_GRAD_ACCUMULATOR_INPUT_META) is True
+    )
 
 
 def insert_graph_gradient_accumulation_from_outputs(
